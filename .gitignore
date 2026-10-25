@@ -1,0 +1,18 @@
+# XcodeGen 生成的工程
+*.xcodeproj/
+*.xcworkspace/
+
+# CI 里生成的图标（由 scripts/make_icon.py 生成）
+LiquidGlassAdmin/Resources/Assets.xcassets/
+
+# 构建产物
+build/
+*.ipa
+*.dSYM/
+
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
