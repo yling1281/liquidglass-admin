@@ -22,8 +22,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ── 自举：仓库里只有配置文件，Swift 源码由这里拉取解压 ──
-      # 存在 .bootstrap-url 时才执行；补全源码后删掉该文件，此步自动失效。
+      # ── 自举：仓库里只有配置时，从这里拉取完整源码 ──
+      # 存在 .bootstrap-url 才执行；拉完后由下方的「源码落回」步骤删掉它。
       # ⚠️ 下载地址用 .bin 扩展名：静态站网关按扩展名白名单，.tar.gz / .zip 会 403。
       - name: Bootstrap source (temporary)
         if: hashFiles('.bootstrap-url') != ''
@@ -57,6 +57,39 @@ jobs:
             fi
           done
           echo "Swift 文件数: $(find LiquidGlassAdmin -name '*.swift' | wc -l)"
+
+      # ── 源码落回仓库 ──
+      # 自举完成后把源码提交回仓库，并删掉 .bootstrap-url。
+      # 这样仓库从「只有配置」变成「自包含」，下次构建不再需要外网拉包。
+      #
+      # 三个必须的细节：
+      # 1. 提交信息带 [skip ci]，否则这次提交会再次触发流水线 → 无限循环；
+      # 2. `git reset .github` —— CI 的 GITHUB_TOKEN 没有 workflows 权限，
+      #    暂存区只要带了 .github 下的改动，整个 push 会被 GitHub 拒绝；
+      # 3. 失败不算构建失败（源码已在工作区，本次构建照常继续）。
+      - name: Commit source back (one-time)
+        if: hashFiles('.bootstrap-url') != ''
+        continue-on-error: true
+        run: |
+          set -e
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git rm -q --cached .bootstrap-url || true
+          rm -f .bootstrap-url
+          rm -f .push-test.txt
+          git add -A
+          git reset -q .github || true
+          if git diff --cached --quiet; then
+            echo "没有可提交的内容"
+            exit 0
+          fi
+          git commit -q -m "chore: 落回完整源码 [skip ci]"
+          if git push > git-push.log 2>&1; then
+            echo "✅ 源码已提交回仓库"
+          else
+            echo "⚠️ 提交回仓库失败（不影响本次构建）："
+            cat git-push.log
+          fi
 
       - name: Install XcodeGen
         run: brew install xcodegen
