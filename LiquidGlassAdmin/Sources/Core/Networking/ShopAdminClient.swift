@@ -232,6 +232,14 @@ final class ShopAdminClient {
 
     /// 列表接口的便捷封装，返回 `(items, total)`。
     ///
+    /// ⚠️ **列表接口是 POST，不是 GET。**
+    ///
+    /// `Admin\Api\Commodity::data()` 里写的是 `$map = $_POST;`，
+    /// 分页（`page` / `limit`）和筛选条件全部从 **POST body** 读。
+    /// 用 GET query 传这些参数不会有任何效果 —— 服务端照常返回全部数据，
+    /// 看起来「能用」，但分页永远不生效、筛选永远不过滤。
+    /// 实测：GET `?page=2&limit=2` 返回全部 4 条；POST 同样参数才正确返回第 2 页。
+    ///
     /// 各模块的列表项字段完全不同，所以保持 `[String: Any]`，
     /// 由上层按模块配置渲染 —— 23 个模块共用这一份请求逻辑。
     func list(
@@ -241,8 +249,8 @@ final class ShopAdminClient {
     ) async throws -> (items: [[String: Any]], total: Int) {
         let payload = try await request(
             path: path,
-            method: "GET",
-            query: query,
+            method: "POST",
+            body: query,
             refererPage: refererPage
         )
         guard let dict = payload as? [String: Any] else { return ([], 0) }
