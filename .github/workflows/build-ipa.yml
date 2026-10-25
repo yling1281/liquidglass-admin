@@ -8,6 +8,7 @@ on:
       - 'project.yml'
       - 'scripts/**'
       - '.github/workflows/build-ipa.yml'
+      - '.bootstrap-url'
       - 'README.md'
   workflow_dispatch:
 
@@ -20,6 +21,42 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # ── 自举：仓库里只有配置文件，Swift 源码由这里拉取解压 ──
+      # 存在 .bootstrap-url 时才执行；补全源码后删掉该文件，此步自动失效。
+      # ⚠️ 下载地址用 .bin 扩展名：静态站网关按扩展名白名单，.tar.gz / .zip 会 403。
+      - name: Bootstrap source (temporary)
+        if: hashFiles('.bootstrap-url') != ''
+        run: |
+          set -e
+          SRC_URL=$(tr -d ' \n\r' < .bootstrap-url)
+          echo "拉取源码包…"
+          curl -fsSL --retry 4 --retry-all-errors --retry-delay 3 \
+            --max-time 300 -o "$RUNNER_TEMP/src.bin" "$SRC_URL"
+          SIZE=$(wc -c < "$RUNNER_TEMP/src.bin")
+          echo "包大小: $SIZE 字节"
+          test "$SIZE" -gt 50000 || { echo "包不完整"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/src"
+          tar -xzf "$RUNNER_TEMP/src.bin" -C "$RUNNER_TEMP/src"
+          echo "解压文件数: $(find "$RUNNER_TEMP/src" -type f | wc -l)"
+          rsync -a "$RUNNER_TEMP/src/" ./
+          echo "===== 自举后关键文件自检 ====="
+          for f in project.yml \
+                   LiquidGlassAdmin/Resources/Info.plist \
+                   LiquidGlassAdmin/Sources/App/LiquidGlassAdminApp.swift \
+                   LiquidGlassAdmin/Sources/Core/Networking/APIClient.swift \
+                   LiquidGlassAdmin/Sources/Features/Cards/CardListView.swift \
+                   LiquidGlassAdmin/Sources/Features/Shop/ShopManagementView.swift \
+                   LiquidGlassAdmin/Sources/Features/Integration/IntegrationView.swift \
+                   scripts/make_icon.py; do
+            if [ -f "$f" ]; then
+              echo "  OK   $f"
+            else
+              echo "  MISS $f"
+              exit 1
+            fi
+          done
+          echo "Swift 文件数: $(find LiquidGlassAdmin -name '*.swift' | wc -l)"
 
       - name: Install XcodeGen
         run: brew install xcodegen
