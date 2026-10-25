@@ -1,0 +1,45 @@
+name: LiquidGlassAdmin
+options:
+  bundleIdPrefix: cn.lingyan
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: false
+  groupSortPosition: top
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_USER_SCRIPT_SANDBOXING: "YES"
+    SWIFT_STRICT_CONCURRENCY: minimal
+
+targets:
+  LiquidGlassAdmin:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: LiquidGlassAdmin/Sources
+      - path: LiquidGlassAdmin/Resources
+        excludes:
+          - "Info.plist"
+    settings:
+      base:
+        INFOPLIST_FILE: LiquidGlassAdmin/Resources/Info.plist
+        GENERATE_INFOPLIST_FILE: "NO"
+        PRODUCT_BUNDLE_IDENTIFIER: cn.lingyan.liquidglass.admin
+        PRODUCT_NAME: LiquidGlassAdmin
+        TARGETED_DEVICE_FAMILY: "1,2"          # 1=iPhone, 2=iPad
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_PREVIEWS: "YES"
+        SWIFT_EMIT_LOC_STRINGS: "YES"
+    # 注意：不要在这里写 `info:` 块。
+    # Info.plist 是手写的（LiquidGlassAdmin/Resources/Info.plist），
+    # 若同时给 XcodeGen 一个 `info:` 块，它会用生成的版本**覆盖**手写文件，
+    # 导致 UISupportedInterfaceOrientations 等键丢失。
+    # 同理 INFOPLIST_KEY_* 这类构建设置只在 GENERATE_INFOPLIST_FILE=YES 时才生效，
+    # 本工程设为 NO（用自带 plist），所以那些设置一律不写在这里。
