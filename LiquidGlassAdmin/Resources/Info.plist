@@ -44,6 +44,21 @@
 	</array>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<!-- QQ 授权登录的回跳 scheme：
+	     卡密后台 /prod-api/qq/callback 在换取完 openid 后 302 到
+	     lingyankey://login?token=… ，由 App 接住并落库。
+	     与 Aevis 的 aevis:// 分开，避免两个 App 抢同一个 scheme。 -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>cn.lingyan.liquidglass.admin</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>lingyankey</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<!-- 说明：后台接口全部为 HTTPS，无需放宽 ATS。保留此键仅为将来接入自建 http 服务时预留开关。 -->
