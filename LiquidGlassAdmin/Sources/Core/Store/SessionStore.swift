@@ -38,7 +38,7 @@ enum LoadState<Value> {
 
 /// 登录会话。
 ///
-/// 负责：登录、登出、token 持久化、自动登录、用户信息与权限。
+/// 负责：登录、登出、token 持久化、自动登录、用户信息与权限、QQ 绑定。
 @MainActor
 final class SessionStore: ObservableObject {
 
@@ -75,8 +75,6 @@ final class SessionStore: ObservableObject {
     }
 
     /// 尝试用已保存的 token 自动登录。
-    ///
-    /// - Returns: 是否成功。
     func attemptAutoLogin() async -> Bool {
         guard !didAttemptAutoLogin else { return isAuthenticated }
         didAttemptAutoLogin = true
@@ -100,7 +98,7 @@ final class SessionStore: ObservableObject {
         }
     }
 
-    /// 登录。
+    /// 账号密码登录。
     func login(username: String, password: String) async {
         loginError = nil
         isLoggingIn = true
@@ -172,5 +170,113 @@ final class SessionStore: ObservableObject {
     /// 是否拥有权限点。
     func can(_ permission: String) -> Bool {
         permissions.contains(permission)
+    }
+
+    // MARK: - QQ 登录
+
+    /// QQ 绑定状态。
+    struct QQBinding: Equatable {
+        var bound: Bool = false
+        var nickname: String = ""
+        var figureurl: String = ""
+        var openidMasked: String = ""
+        /// 当前账号是不是管理员（只有管理员能绑定/用 QQ 登录）。
+        var isAdmin: Bool = false
+        /// 服务端有没有配 QQ（缺 qq_config.json 时为 false）。
+        var configured: Bool = false
+    }
+
+    /// 用 QQ 回调里拿到的卡密 token 完成登录。
+    ///
+    /// 这个 token 是服务端 `/qq/callback` 用 `token_for()` 签的，
+    /// 与账号密码登录拿到的是同一种 JWT，所以走同一套落库与拉权限流程。
+    func loginWithQQToken(_ token: String) async {
+        loginError = nil
+        guard !token.isEmpty else {
+            loginError = .decoding("QQ 回调里没有 token")
+            return
+        }
+        tokenStore.save(token: token)
+        isAuthenticated = true
+        didAttemptAutoLogin = true
+        do {
+            try await fetchUserInfo()
+        } catch let error as APIError {
+            // token 已落地，但拉不到权限 —— 如实暴露，不假装成功
+            loginError = error
+        } catch {
+            loginError = .transport(error.localizedDescription)
+        }
+    }
+
+    /// 读当前账号的 QQ 绑定状态。
+    func loadQQStatus() async -> QQBinding? {
+        do {
+            let data = try await client.sendRaw(APIRequest(endpoint: APIEndpoint.qqStatus))
+            guard let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  (obj["code"] as? Int) == 200,
+                  let d = obj["data"] as? [String: Any]
+            else { return nil }
+            return QQBinding(
+                bound: (d["bound"] as? Bool) ?? false,
+                nickname: (d["nickname"] as? String) ?? "",
+                figureurl: (d["figureurl"] as? String) ?? "",
+                openidMasked: (d["openidMasked"] as? String) ?? "",
+                isAdmin: (d["isAdmin"] as? Bool) ?? false,
+                configured: (d["configured"] as? Bool) ?? false
+            )
+        } catch {
+            return nil
+        }
+    }
+
+    /// 取绑定票据，返回要打开的授权页地址。
+    func requestQQBindURL() async -> Result<URL, APIError> {
+        do {
+            let data = try await client.sendRaw(APIRequest(endpoint: APIEndpoint.qqBindTicket))
+            guard let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                return .failure(.decoding("响应不是 JSON"))
+            }
+            let code = (obj["code"] as? Int) ?? -1
+            guard code == 200 else {
+                return .failure(.business(code: code, message: (obj["msg"] as? String) ?? "取绑定票据失败"))
+            }
+            guard let d = obj["data"] as? [String: Any],
+                  let path = d["url"] as? String
+            else {
+                return .failure(.decoding("绑定地址缺失"))
+            }
+            // 服务端给的是 `/qq/authorize?t=…` 相对路径，拼上 API 根。
+            let full = path.hasPrefix("http")
+                ? path
+                : serverStore.config.normalizedCardAPIBase + path
+            guard let url = URL(string: full) else {
+                return .failure(.decoding("绑定地址不合法：\(full)"))
+            }
+            return .success(url)
+        } catch let error as APIError {
+            return .failure(error)
+        } catch {
+            return .failure(.transport(error.localizedDescription))
+        }
+    }
+
+    /// 解绑 QQ。成功返回 nil，失败返回错误文案。
+    func unbindQQ() async -> String? {
+        do {
+            let data = try await client.sendRaw(APIRequest(endpoint: APIEndpoint.qqUnbind))
+            guard let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                return "解绑失败：响应异常"
+            }
+            let code = (obj["code"] as? Int) ?? -1
+            if code == 200 {
+                return nil
+            }
+            return (obj["msg"] as? String) ?? "解绑失败（code \(code)）"
+        } catch let error as APIError {
+            return error.errorDescription
+        } catch {
+            return error.localizedDescription
+        }
     }
 }
