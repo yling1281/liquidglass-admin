@@ -482,9 +482,12 @@ struct CardListView: View {
 
     /// 选中项里有没有可以「恢复」的（冻结或封禁）。
     private var canRestoreSelected: Bool {
-        store.items.contains { item in
-            store.selection.contains(item.id)
-                && (item.status == .frozen || item.status == .voided)
+        let frozen = CardStatus.frozen.rawValue
+        let voided = CardStatus.voided.rawValue
+        let ids = store.selection
+        return store.items.contains { item in
+            guard ids.contains(item.id) else { return false }
+            return item.status == frozen || item.status == voided
         }
     }
 

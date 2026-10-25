@@ -151,8 +151,8 @@ final class CardListStore: ObservableObject {
         guard !selection.isEmpty else { return }
 
         let chosen = items.filter { selection.contains($0.id) }
-        let frozen = chosen.filter { $0.status == .frozen }.map(\.id)
-        let banned = chosen.filter { $0.status == .voided }.map(\.id)
+        let frozen = chosen.filter { $0.status == CardStatus.frozen.rawValue }.map(\.id)
+        let banned = chosen.filter { $0.status == CardStatus.voided.rawValue }.map(\.id)
 
         if frozen.isEmpty && banned.isEmpty {
             toast = "选中的卡里没有冻结或封禁状态的"
