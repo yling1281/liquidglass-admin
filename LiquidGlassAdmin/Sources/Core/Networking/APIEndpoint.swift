@@ -48,6 +48,19 @@ enum APIEndpoint {
     /// 解绑 QQ。`POST /qq/unbind`（需登录 + 管理员）
     static let qqUnbind = Endpoint(path: "/qq/unbind", method: .post)
 
+    /// 当前账号对应的店铺后台管理员（账号打通的映射）。`GET /admin/link`
+    static let accountLink = Endpoint(path: "/admin/link", method: .get)
+
+    /// 修改密码。`PUT /system/user/profile/updatePwd`
+    ///
+    /// body: `{oldPassword, newPassword}`。
+    /// 服务端会在改完卡密后台之后再写一遍店铺后台（各用各的哈希算法），
+    /// 所以**改一次两边都生效** —— 这是「账号打通」的落点。
+    static let changePassword = Endpoint(
+        path: "/system/user/profile/updatePwd",
+        method: .put
+    )
+
     // MARK: 卡密
 
     /// 卡密列表。`GET /card/key/list`

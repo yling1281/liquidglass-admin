@@ -38,7 +38,7 @@ struct ShopAdminLoginView: View {
             }
             .scrollDismissesKeyboard(.interactively)
         }
-        .navigationTitle("店铺后台")
+        .navigationTitle("店铺管理")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear(perform: prefill)
     }
@@ -48,9 +48,9 @@ struct ShopAdminLoginView: View {
             Image(systemName: "storefront.fill")
                 .font(.system(size: 48))
                 .foregroundStyle(.tint)
-            Text("店铺后台")
+            Text("店铺管理")
                 .font(.title2.weight(.bold))
-            Text("异次元发卡 · acg-faka")
+            Text("商品、订单与会员")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }

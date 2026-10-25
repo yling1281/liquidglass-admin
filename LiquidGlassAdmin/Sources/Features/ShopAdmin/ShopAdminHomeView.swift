@@ -9,8 +9,10 @@ import SwiftUI
 struct ShopAdminHomeView: View {
 
     @ObservedObject var client: ShopAdminSession
+    /// 经营数据。由外层传入（与总览页共用同一个实例），不在这里新建 ——
+    /// 同一个数字在总览和店铺两个入口里必须一致。
+    @ObservedObject var dashboard: ShopAdminDashboardStore
 
-    @StateObject private var dashboard = ShopAdminDashboardStore()
     @Environment(\.horizontalSizeClass) private var hSizeClass
 
     private var isRegular: Bool { hSizeClass == .regular }
@@ -41,7 +43,7 @@ struct ShopAdminHomeView: View {
             }
         }
         .listStyle(.insetGrouped)
-        .navigationTitle("店铺后台")
+        .navigationTitle("店铺")
         .refreshable {
             await dashboard.load()
             await client.refresh()

@@ -10,7 +10,14 @@ import SwiftUI
 struct DashboardView: View {
 
     @ObservedObject var store: CardStatisticsStore
+    /// 店铺后台的经营数据。
+    ///
+    /// 与「店铺」tab 共用同一个 store 实例 —— 同一个数据两个入口看，
+    /// 没必要各拉一次，也避免两处数字对不上。
+    @ObservedObject var shopDashboard: ShopAdminDashboardStore
+    @ObservedObject var shopAdmin: ShopAdminSession
 
+    @EnvironmentObject private var session: SessionStore
     @Environment(\.horizontalSizeClass) private var hSizeClass
 
     private var isRegular: Bool { hSizeClass == .regular }
@@ -18,22 +25,22 @@ struct DashboardView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                if isRegular {
-                    summaryGrid
-                    detailSection
-                } else {
-                    summaryGrid
-                    detailSection
-                }            }
+                summaryGrid
+                shopSection
+                detailSection
+            }
             .padding()
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(Color(.systemGroupedBackground))
-        .navigationTitle("统计")
+        .navigationTitle("总览")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                    Task { await store.load() }
+                    Task {
+                        await store.load()
+                        if shopAdmin.isLoggedIn { await shopDashboard.load() }
+                    }
                 } label: {
                     Image(systemName: "arrow.clockwise")
                 }
@@ -43,6 +50,12 @@ struct DashboardView: View {
         }
         .refreshable {
             await store.load()
+            if shopAdmin.isLoggedIn { await shopDashboard.load() }
+        }
+        .task {
+            if shopAdmin.isLoggedIn, case .idle = shopDashboard.state {
+                await shopDashboard.load()
+            }
         }
         .overlay {
             switch store.state {
@@ -54,6 +67,91 @@ struct DashboardView: View {
                 }
             default:
                 EmptyView()
+            }
+        }
+    }
+
+    // MARK: 店铺经营
+
+    /// 店铺侧的经营数据。
+    ///
+    /// 「两边都有总览入口」：这里是总览页的一块，店铺 tab 里也有一份
+    /// （同一个 store），从哪边进都能看到同样的数字。
+    @ViewBuilder
+    private var shopSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Text("店铺经营")
+                    .font(.headline)
+                Spacer()
+                if shopAdmin.isLoggedIn {
+                    NavigationLink {
+                        ShopAdminHomeView(client: shopAdmin, dashboard: shopDashboard)
+                    } label: {
+                        Text("全部模块")
+                            .font(.caption)
+                    }
+                }
+            }
+
+            if !shopAdmin.isLoggedIn {
+                HStack(spacing: 10) {
+                    Image(systemName: "storefront")
+                        .foregroundStyle(.secondary)
+                    Text("还没登录店铺后台")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    NavigationLink {
+                        ShopAdminLoginView(shopAdmin: shopAdmin, session: session)
+                    } label: {
+                        Text("去登录")
+                            .font(.footnote.weight(.medium))
+                    }
+                }
+                .padding(14)
+                .background(.background, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            } else {
+                switch shopDashboard.state {
+                case .idle, .loading:
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("正在加载店铺数据…")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 6)
+                case .failed(let error):
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label(error.errorDescription ?? "店铺数据加载失败",
+                              systemImage: "exclamationmark.triangle.fill")
+                            .font(.footnote)
+                            .foregroundStyle(.orange)
+                        Button("重试") {
+                            Task { await shopDashboard.load() }
+                        }
+                        .font(.footnote)
+                    }
+                case .loaded:
+                    if shopDashboard.metrics.isEmpty {
+                        Text("店铺还没有经营数据")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        LazyVGrid(
+                            columns: [GridItem(.adaptive(minimum: 150, maximum: 260), spacing: 12)],
+                            spacing: 12
+                        ) {
+                            ForEach(shopDashboard.metrics) { metric in
+                                StatTile(
+                                    title: metric.title,
+                                    value: metric.value,
+                                    systemImage: metric.icon
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }

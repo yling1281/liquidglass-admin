@@ -33,6 +33,10 @@ struct CardListView: View {
     @State private var isGridMode = false
     @State private var statusAction: StatusActionTarget?
     @State private var confirmAction: ConfirmAction?
+    /// 多选模式：长按任一张卡进入，点「完成」或全不选时退出。
+    @State private var isSelecting = false
+    /// 触觉反馈的触发器（每次进出多选 +1）。
+    @State private var selectTick = 0
 
     /// 需要填原因的批量操作。
     private struct StatusActionTarget: Identifiable {
@@ -82,6 +86,7 @@ struct CardListView: View {
         .task {
             await store.loadIfNeeded()
         }
+        .sensoryFeedback(.selection, trigger: selectTick)
         .overlay(alignment: .top) {
             ToastBanner(message: $store.toast, isError: false)
         }
@@ -155,8 +160,13 @@ struct CardListView: View {
         .navigationTitle("卡密列表")
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
-                layoutToggle
-                addButton
+                if isSelecting {
+                    Button("完成") { exitSelection() }
+                        .fontWeight(.medium)
+                } else {
+                    layoutToggle
+                    addButton
+                }
             }
         }
     }
@@ -172,7 +182,12 @@ struct CardListView: View {
         .navigationTitle("卡密列表")
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
-                addButton
+                if isSelecting {
+                    Button("完成") { exitSelection() }
+                        .fontWeight(.medium)
+                } else {
+                    addButton
+                }
             }
         }
     }
@@ -310,19 +325,15 @@ struct CardListView: View {
                             .font(.footnote)
                     }
 
+                    // 一个按钮顶原来两个：自动看选中项是冻结还是封禁，
+                    // 冻结的送去解冻、封禁的送去解封，混选也能一次处理完。
                     Button {
-                        confirmAction = .unfreeze
+                        Task { await store.restoreSelected() }
                     } label: {
-                        Label("解冻", systemImage: "sun.max")
+                        Label("恢复", systemImage: "arrow.uturn.backward.circle")
                             .font(.footnote)
                     }
-
-                    Button {
-                        confirmAction = .unban
-                    } label: {
-                        Label("解封", systemImage: "lock.open")
-                            .font(.footnote)
-                    }
+                    .disabled(!canRestoreSelected)
                 }
 
                 if session.can(Permission.cardRemove) {
@@ -448,20 +459,66 @@ struct CardListView: View {
         .contentShape(Rectangle())
         .background(isSelected(card) ? Color.accentColor.opacity(0.12) : Color.clear)
         .onTapGesture {
-            if isSelected(card) {
-                store.selection.remove(card.id)
+            if isSelecting {
+                toggleSelection(card)
             } else {
-                store.selection.insert(card.id)
+                selectedCard = card
             }
-            selectedCard = card
         }
-        .contextMenu {
-            contextMenu(for: card)
+        // 长按进入多选 —— 这是「选中多张」最自然的入口。
+        // 不能同时保留 .contextMenu：它也吃长按，两个手势会同时响应
+        // （菜单弹出来的同时进了多选）。原来的右键菜单里的操作（冻结/封禁/删除）
+        // 在选择栏里都有一份，所以去掉不影响能力。
+        .onLongPressGesture(minimumDuration: 0.35) {
+            enterSelection(card)
         }
     }
 
     private func isSelected(_ card: CardKey) -> Bool {
         store.selection.contains(card.id)
+    }
+
+    // MARK: 多选
+
+    /// 选中项里有没有可以「恢复」的（冻结或封禁）。
+    private var canRestoreSelected: Bool {
+        store.items.contains { item in
+            store.selection.contains(item.id)
+                && (item.status == .frozen || item.status == .voided)
+        }
+    }
+
+    /// 长按进入多选，并把当前这张带上。
+    private func enterSelection(_ card: CardKey) {
+        if !isSelecting {
+            isSelecting = true
+            selectTick += 1
+        }
+        if !store.selection.contains(card.id) {
+            store.selection.insert(card.id)
+        }
+        selectedCard = card
+    }
+
+    /// 退出多选。
+    private func exitSelection() {
+        isSelecting = false
+        store.selection.removeAll()
+        selectTick += 1
+    }
+
+    /// 多选模式下点一张：切换它的选中态。
+    private func toggleSelection(_ card: CardKey) {
+        if store.selection.contains(card.id) {
+            store.selection.remove(card.id)
+            // 全取消就自动退出多选，省掉一次「完成」
+            if store.selection.isEmpty {
+                isSelecting = false
+            }
+        } else {
+            store.selection.insert(card.id)
+        }
+        selectedCard = card
     }
 
     /// 到期文案 —— 网页版 `G()` 函数：空值显示「永久」，否则显示日期。
@@ -481,16 +538,32 @@ struct CardListView: View {
     // MARK: iPhone 列表
 
     private var listRows: some View {
-        List(selection: $store.selection) {
+        List {
             Section {
                 ForEach(store.items) { card in
-                    NavigationLink {
-                        CardDetailView(card: card)
-                    } label: {
+                    if isSelecting {
+                        // 多选模式：点一下切换选中，不再进详情
                         cardRow(card)
-                    }
-                    .contextMenu {
-                        contextMenu(for: card)
+                            .contentShape(Rectangle())
+                            .onTapGesture { toggleSelection(card) }
+                            .listRowBackground(
+                                isSelected(card)
+                                ? Color.accentColor.opacity(0.12)
+                                : Color.clear
+                            )
+                    } else {
+                        NavigationLink {
+                            CardDetailView(card: card)
+                        } label: {
+                            cardRow(card)
+                        }
+                        // 用 simultaneousGesture 而不是 onLongPressGesture：
+                        // NavigationLink 自己吞手势，普通长按收不到事件。
+                        .simultaneousGesture(
+                            LongPressGesture(minimumDuration: 0.35).onEnded { _ in
+                                enterSelection(card)
+                            }
+                        )
                     }
                 }
             } header: {
@@ -563,15 +636,14 @@ struct CardListView: View {
                     CardGridCell(card: card, isSelected: store.selection.contains(card.id))
                         .contentShape(Rectangle())
                         .onTapGesture {
-                            if store.selection.contains(card.id) {
-                                store.selection.remove(card.id)
+                            if isSelecting {
+                                toggleSelection(card)
                             } else {
-                                store.selection.insert(card.id)
+                                selectedCard = card
                             }
-                            selectedCard = card
                         }
-                        .contextMenu {
-                            contextMenu(for: card)
+                        .onLongPressGesture(minimumDuration: 0.35) {
+                            enterSelection(card)
                         }
                 }
             }
@@ -589,31 +661,6 @@ struct CardListView: View {
     // MARK: 右键菜单
 
     @ViewBuilder
-    private func contextMenu(for card: CardKey) -> some View {
-        if session.can(Permission.cardStatus) {
-            Button {
-                store.selection = [card.id]
-                statusAction = StatusActionTarget(status: .frozen, title: "冻结")
-            } label: {
-                Label("冻结", systemImage: "snowflake")
-            }
-            Button {
-                store.selection = [card.id]
-                statusAction = StatusActionTarget(status: .voided, title: "封禁")
-            } label: {
-                Label("封禁", systemImage: "nosign")
-            }
-        }
-        if session.can(Permission.cardRemove) {
-            Divider()
-            Button(role: .destructive) {
-                store.selection = [card.id]
-                confirmAction = .delete
-            } label: {
-                Label("删除", systemImage: "trash")
-            }
-        }
-    }
 }
 
 // MARK: - 网格单元格

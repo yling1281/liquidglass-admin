@@ -17,6 +17,8 @@ struct RootView: View {
     @EnvironmentObject private var session: SessionStore
 
     @StateObject private var shopAdmin = ShopAdminSession()
+    /// 店铺经营数据 —— 总览页和店铺 tab 共用这一个实例。
+    @StateObject private var shopDashboard = ShopAdminDashboardStore()
     @State private var tab: Tab = .overview
 
     @State private var cardStore = CardListStore()
@@ -84,7 +86,11 @@ struct RootView: View {
 
     private var overviewTab: some View {
         NavigationStack {
-            DashboardView(store: statisticsStore)
+            DashboardView(
+                store: statisticsStore,
+                shopDashboard: shopDashboard,
+                shopAdmin: shopAdmin
+            )
         }
     }
 
@@ -94,7 +100,7 @@ struct RootView: View {
         NavigationStack {
             Group {
                 if shopAdmin.isLoggedIn {
-                    ShopAdminHomeView(client: shopAdmin)
+                    ShopAdminHomeView(client: shopAdmin, dashboard: shopDashboard)
                 } else {
                     ShopAdminLoginView(shopAdmin: shopAdmin, session: session)
                 }

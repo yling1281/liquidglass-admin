@@ -142,6 +142,51 @@ final class CardListStore: ObservableObject {
         await runSimpleOperation(endpoint: APIEndpoint.cardUnban, ids: ids, label: "解封")
     }
 
+    /// 按选中项的**实际状态**自动恢复：冻结的送去解冻，封禁的送去解封。
+    ///
+    /// 为什么要有这个：选中的一批卡往往混着冻结和封禁两种状态，
+    /// 用户不可能先逐条看清再分别点两个按钮。这里按状态拆成两批，
+    /// 各走各的接口，最后把结果合并成一句提示。
+    func restoreSelected() async {
+        guard !selection.isEmpty else { return }
+
+        let chosen = items.filter { selection.contains($0.id) }
+        let frozen = chosen.filter { $0.status == .frozen }.map(\.id)
+        let banned = chosen.filter { $0.status == .voided }.map(\.id)
+
+        if frozen.isEmpty && banned.isEmpty {
+            toast = "选中的卡里没有冻结或封禁状态的"
+            return
+        }
+
+        var parts: [String] = []
+        if !frozen.isEmpty {
+            let count = await simpleRestore(endpoint: APIEndpoint.cardUnfreeze, ids: frozen)
+            parts.append(count >= 0 ? "解冻 \(count) 张" : "解冻失败")
+        }
+        if !banned.isEmpty {
+            let count = await simpleRestore(endpoint: APIEndpoint.cardUnban, ids: banned)
+            parts.append(count >= 0 ? "解封 \(count) 张" : "解封失败")
+        }
+
+        selection.removeAll()
+        toast = parts.joined(separator: "，")
+        await reload()
+    }
+
+    /// 恢复类操作：返回成功条数，失败返回 `-1`。
+    private func simpleRestore(endpoint: Endpoint, ids: [Int]) async -> Int {
+        do {
+            let result = try await client.send(
+                APIRequest(endpoint: endpoint, body: ["ids": ids]),
+                as: BatchOperationResult.self
+            )
+            return result.success ?? 0
+        } catch {
+            return -1
+        }
+    }
+
     /// 删除。
     func deleteSelected() async {
         let ids = Array(selection)

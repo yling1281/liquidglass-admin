@@ -281,4 +281,70 @@ final class SessionStore: ObservableObject {
             return error.localizedDescription
         }
     }
+
+    // MARK: - 账号打通
+
+    /// 账号关联信息（当前卡密账号对应店铺后台的哪个管理员）。
+    struct AccountLink: Equatable {
+        var userName: String = ""
+        var linked: Bool = false
+        var manageId: Int = 0
+        var email: String = ""
+        var nickname: String = ""
+        /// 店铺后台的接口能力是否可用（容器在跑、PHP 能调）。
+        var ready: Bool = false
+    }
+
+    /// 读账号关联。
+    func loadAccountLink() async -> AccountLink? {
+        do {
+            let data = try await client.sendRaw(APIRequest(endpoint: APIEndpoint.accountLink))
+            guard let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let d = obj["data"] as? [String: Any]
+            else { return nil }
+            return AccountLink(
+                userName: (d["userName"] as? String) ?? "",
+                linked: (d["linked"] as? Bool) ?? false,
+                manageId: (d["manageId"] as? Int) ?? 0,
+                email: (d["email"] as? String) ?? "",
+                nickname: (d["nickname"] as? String) ?? "",
+                ready: (d["acgReady"] as? Bool) ?? false
+            )
+        } catch {
+            return nil
+        }
+    }
+
+    /// 修改密码。
+    ///
+    /// 服务端会**同时**改两个后台：卡密后台（sqlite, sha256）和店铺后台
+    /// （MySQL, bcrypt）。返回的文案直接来自服务端，会明确说
+    /// 「两个后台的密码都已更新」还是「只有卡密改了、店铺同步失败」——
+    /// 跨两个库没有事务，不能假装原子成功。
+    func changePassword(old: String, new: String) async -> (message: String, isError: Bool) {
+        let trimmed = new.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 6 else {
+            return ("新密码至少 6 位", true)
+        }
+        do {
+            let data = try await client.sendRaw(APIRequest(
+                endpoint: APIEndpoint.changePassword,
+                body: ["oldPassword": old, "newPassword": new]
+            ))
+            guard let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                return ("响应格式异常", true)
+            }
+            let code = (obj["code"] as? Int) ?? -1
+            let msg = (obj["msg"] as? String) ?? ""
+            if code == 200 {
+                return (msg.isEmpty ? "密码已修改" : msg, false)
+            }
+            return (msg.isEmpty ? "修改失败（code \(code)）" : msg, true)
+        } catch let error as APIError {
+            return (error.errorDescription ?? "修改失败", true)
+        } catch {
+            return (error.localizedDescription, true)
+        }
+    }
+
 }

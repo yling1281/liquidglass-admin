@@ -25,6 +25,15 @@ struct SettingsView: View {
     @State private var expiryReminderEnabled = true
     @State private var expiryReminderDays = 7
 
+    // 账号打通 + 改密码
+    @State private var accountLink: SessionStore.AccountLink?
+    @State private var oldPassword = ""
+    @State private var newPassword = ""
+    @State private var confirmPassword = ""
+    @State private var passwordMessage: String?
+    @State private var passwordIsError = false
+    @State private var isChangingPassword = false
+
     // QQ 绑定
     @State private var qqBinding: SessionStore.QQBinding?
     @State private var isQQBusy = false
@@ -39,6 +48,7 @@ struct SettingsView: View {
             accountSection
             qqSection
             shopAdminSection
+            passwordSection
             moreSection
             serverSection
             notificationSection
@@ -241,9 +251,97 @@ struct SettingsView: View {
                 }
             }
         } header: {
-            Text("店铺后台（异次元发卡）")
+            Text("店铺账号")
         } footer: {
-            Text("店铺后台用邮箱登录（3113105903@qq.com），卡密后台用用户名（lingyan）。卡密后台已给该账号加了邮箱别名，所以一套密码两边都能进。")
+            Text("店铺和卡密是两个后台，但用同一套凭证：邮箱 3113105903@qq.com + 同一个密码。在下面改密码会两边一起改，不用分别去改。")
+        }
+    }
+
+    // MARK: 修改密码（两个后台一起改）
+
+    private var passwordSection: some View {
+        Section {
+            if let link = accountLink, link.linked {
+                HStack(spacing: 8) {
+                    Image(systemName: "link")
+                        .font(.caption)
+                        .foregroundStyle(.tint)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("已关联店铺账号")
+                            .font(.footnote)
+                        Text(link.email)
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+            }
+
+            SecureField("当前密码", text: $oldPassword)
+                .textContentType(.password)
+
+            SecureField("新密码（至少 6 位）", text: $newPassword)
+                .textContentType(.newPassword)
+
+            SecureField("再输一次新密码", text: $confirmPassword)
+                .textContentType(.newPassword)
+
+            Button {
+                submitPassword()
+            } label: {
+                HStack(spacing: 6) {
+                    if isChangingPassword {
+                        ProgressView().controlSize(.small)
+                    }
+                    Text(isChangingPassword ? "正在修改…" : "修改密码")
+                }
+            }
+            .disabled(
+                isChangingPassword
+                || oldPassword.isEmpty
+                || newPassword.isEmpty
+                || newPassword != confirmPassword
+            )
+
+            if let message = passwordMessage {
+                Label(message, systemImage: passwordIsError
+                      ? "exclamationmark.triangle.fill"
+                      : "checkmark.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(passwordIsError ? Color.red : Color.green)
+            }
+        } header: {
+            Text("修改密码")
+        } footer: {
+            Text("改一次两边都生效 —— 卡密后台和店铺后台共用同一个密码，服务端会分别按各自的算法写一遍。")
+        }
+        .task {
+            if accountLink == nil {
+                accountLink = await session.loadAccountLink()
+            }
+        }
+    }
+
+    private func submitPassword() {
+        guard !isChangingPassword else { return }
+        guard newPassword == confirmPassword else {
+            passwordMessage = "两次输入的新密码不一致"
+            passwordIsError = true
+            return
+        }
+        isChangingPassword = true
+        passwordMessage = nil
+
+        Task {
+            let result = await session.changePassword(old: oldPassword, new: newPassword)
+            isChangingPassword = false
+            passwordMessage = result.message
+            passwordIsError = result.isError
+            if !result.isError {
+                oldPassword = ""
+                newPassword = ""
+                confirmPassword = ""
+            }
         }
     }
 
