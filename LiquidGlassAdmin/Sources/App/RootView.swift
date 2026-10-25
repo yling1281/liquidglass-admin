@@ -65,7 +65,6 @@ struct RootView: View {
             shopTab
                 .tabItem { Label(Tab.shop.title, systemImage: Tab.shop.icon) }
                 .tag(Tab.shop)
-                .badge(shopAdmin.isLoggedIn ? 0 : nil)
 
             cardsTab
                 .tabItem { Label(Tab.cards.title, systemImage: Tab.cards.icon) }
