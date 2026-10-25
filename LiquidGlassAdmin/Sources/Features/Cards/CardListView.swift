@@ -657,10 +657,6 @@ struct CardListView: View {
             await store.reload()
         }
     }
-
-    // MARK: 右键菜单
-
-    @ViewBuilder
 }
 
 // MARK: - 网格单元格
