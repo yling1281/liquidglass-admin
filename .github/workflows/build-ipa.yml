@@ -1,0 +1,119 @@
+name: Build IPA
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'LiquidGlassAdmin/**'
+      - 'project.yml'
+      - 'scripts/**'
+      - '.github/workflows/build-ipa.yml'
+      - 'README.md'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-26
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      # 图标在 CI 里生成：仓库不提交二进制 PNG
+      - name: Generate app icon
+        run: python3 scripts/make_icon.py
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build
+        run: |
+          set -e
+          xcodebuild \
+            -project LiquidGlassAdmin.xcodeproj \
+            -target LiquidGlassAdmin \
+            -configuration Release \
+            -sdk iphoneos \
+            SYMROOT="$PWD/build" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            > build.log 2>&1 || {
+              echo "===== BUILD FAILED ====="
+              tail -n 150 build.log
+              exit 1
+            }
+          echo "构建完成"
+          ls -la build/Release-iphoneos/
+
+      - name: Package unsigned IPA
+        run: |
+          set -e
+          APP="build/Release-iphoneos/LiquidGlassAdmin.app"
+          rm -rf Payload *.ipa
+          mkdir -p Payload
+          cp -R "$APP" Payload/LiquidGlassAdmin.app
+          rm -rf Payload/LiquidGlassAdmin.app/_CodeSignature
+          rm -f  Payload/LiquidGlassAdmin.app/embedded.mobileprovision
+          /usr/bin/zip -qry -X LiquidGlassAdmin-unsigned.ipa Payload
+          echo "未签名 IPA 完成"
+
+      - name: Package adhoc IPA (backup)
+        run: |
+          codesign -f -s - --deep Payload/LiquidGlassAdmin.app || true
+          /usr/bin/zip -qry -X LiquidGlassAdmin-adhoc.ipa Payload
+
+      - name: Ensure logs exist
+        if: always()
+        run: |
+          for f in build.log; do
+            [ -s "$f" ] || echo "（这一步没有产生内容）" > "$f"
+          done
+
+      - name: Collect failure info
+        if: failure()
+        run: |
+          {
+            echo "构建失败。"
+            echo '```'
+            grep -E "error:" build.log 2>/dev/null | head -60 || true
+            echo '```'
+          } > errors.txt
+          grep -E "error:" build.log 2>/dev/null | head -15 | while IFS= read -r line; do
+            echo "::error::$line"
+          done
+          cat errors.txt
+
+      - name: Publish logs when failing
+        if: failure()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: log-${{ github.run_number }}
+          body_path: errors.txt
+          prerelease: true
+          files: |
+            errors.txt
+            build.log
+
+      - name: Publish Release
+        if: success()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: admin-${{ github.run_number }}
+          name: 零砚后台 iOS ${{ github.run_number }}
+          body: |
+            零砚后台 iOS/iPadOS 客户端（未签名，需自行重签后安装）
+
+            - 未签名版：`LiquidGlassAdmin-unsigned.ipa`
+            - adhoc 签名版：`LiquidGlassAdmin-adhoc.ipa`
+
+            在 iPhone/iPad 上用全能签 / AltStore / Sideloadly 打开 IPA 重新签名即可安装。
+          prerelease: false
+          files: |
+            LiquidGlassAdmin-unsigned.ipa
+            LiquidGlassAdmin-adhoc.ipa
