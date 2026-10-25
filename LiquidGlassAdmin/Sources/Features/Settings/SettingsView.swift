@@ -6,7 +6,9 @@ import SwiftUI
 ///
 /// 内容：
 /// - 账号信息（用户名、昵称、权限点）。
-/// - 服务器地址（三套：卡密后台 / 商城前台 / 店铺后台），可改可重置。
+/// - QQ 登录绑定（仅管理员）。
+/// - 店铺后台账号。
+/// - 服务器地址（三套），可改可重置。
 /// - 通知开关（本地偏好，实际推送未接入）。
 /// - 退出登录。
 struct SettingsView: View {
@@ -23,11 +25,19 @@ struct SettingsView: View {
     @State private var shopAdminUsername = ""
     @State private var shopAdminPassword = ""
 
+    // QQ 绑定
+    @State private var qqBinding: SessionStore.QQBinding?
+    @State private var isQQBusy = false
+    @State private var qqMessage: String?
+    @State private var qqMessageIsError = false
+    private let qqAuth = QQAuthSession.shared
+
     private var isRegular: Bool { hSizeClass == .regular }
 
     var body: some View {
         Form {
             accountSection
+            qqSection
             shopAdminSection
             serverSection
             notificationSection
@@ -70,6 +80,137 @@ struct SettingsView: View {
                     }
                 }
             }
+        }
+    }
+
+    // MARK: QQ 登录
+
+    private var qqSection: some View {
+        Section {
+            if let binding = qqBinding {
+                if binding.bound {
+                    HStack(spacing: 12) {
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.title3)
+                            .foregroundStyle(Color(red: 0.07, green: 0.72, blue: 0.96))
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(binding.nickname.isEmpty ? "已绑定 QQ" : binding.nickname)
+                                .font(.subheadline.weight(.medium))
+                            Text("openid \(binding.openidMasked)")
+                                .font(.caption2.monospaced())
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        Button("解绑", role: .destructive) {
+                            unbindQQ()
+                        }
+                        .font(.caption)
+                        .disabled(isQQBusy)
+                    }
+                } else {
+                    HStack {
+                        Label("未绑定 QQ", systemImage: "qrcode")
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button(isQQBusy ? "绑定中…" : "绑定 QQ") {
+                            bindQQ()
+                        }
+                        .font(.caption)
+                        .disabled(isQQBusy || !binding.configured || !binding.isAdmin)
+                    }
+                }
+
+                if !binding.configured {
+                    Label("服务器还没配置 QQ 登录（缺 qq_config.json）",
+                          systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                } else if !binding.isAdmin {
+                    Label("只有管理员可以绑定 QQ", systemImage: "lock.fill")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                HStack {
+                    ProgressView().controlSize(.small)
+                    Text("正在读取 QQ 绑定状态…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if let qqMessage {
+                Label(qqMessage, systemImage: qqMessageIsError
+                      ? "exclamationmark.triangle.fill"
+                      : "checkmark.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(qqMessageIsError ? Color.red : Color.green)
+            }
+        } header: {
+            Text("QQ 登录")
+        } footer: {
+            Text("绑定后可以在登录页用「QQ 授权登录」一键进入后台，不用每次输密码。绑定关系存在服务器上，换手机也有效。")
+        }
+        .task {
+            await reloadQQStatus()
+        }
+    }
+
+    private func reloadQQStatus() async {
+        qqBinding = await session.loadQQStatus()
+    }
+
+    private func bindQQ() {
+        guard !isQQBusy else { return }
+        qqMessage = nil
+        isQQBusy = true
+
+        Task {
+            defer { isQQBusy = false }
+            switch await session.requestQQBindURL() {
+            case .failure(let error):
+                qqMessage = error.errorDescription
+                qqMessageIsError = true
+            case .success(let url):
+                do {
+                    let payload = try await qqAuth.authenticate(url: url)
+                    if payload.isBind {
+                        qqMessage = "绑定成功"
+                        qqMessageIsError = false
+                    } else if let message = payload.errorMessage {
+                        qqMessage = message
+                        qqMessageIsError = true
+                    } else {
+                        qqMessage = "绑定没有完成"
+                        qqMessageIsError = true
+                    }
+                } catch {
+                    qqMessage = error.localizedDescription
+                    qqMessageIsError = true
+                }
+                await reloadQQStatus()
+            }
+        }
+    }
+
+    private func unbindQQ() {
+        guard !isQQBusy else { return }
+        qqMessage = nil
+        isQQBusy = true
+
+        Task {
+            defer { isQQBusy = false }
+            if let error = await session.unbindQQ() {
+                qqMessage = error
+                qqMessageIsError = true
+            } else {
+                qqMessage = "已解绑"
+                qqMessageIsError = false
+            }
+            await reloadQQStatus()
         }
     }
 
