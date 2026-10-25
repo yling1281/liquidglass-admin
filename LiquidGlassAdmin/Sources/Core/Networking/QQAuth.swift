@@ -73,9 +73,9 @@ enum QQAuthError: LocalizedError {
 ///
 /// 为什么用系统会话而不是自己拼 Safari：
 /// 1. 它是系统弹窗，能直接拦截自定义 scheme 回调，不用注册 Universal Link；
-/// 2. 用户能看到地址栏，确认是在给 `graph.qq.com` 授权；
-/// 3. `prefersEphemeralWebBrowserSession = false` 时复用 Safari Cookie，
-///    用户 QQ 已是登录态时能一次点完。
+/// 2. 用户能看到地址栏，确认是在给 `graph.qq.com` 授权，不会误以为 App 在偷密码；
+/// 3. Cookie 与 Safari 隔离（`prefersEphemeralWebBrowserSession = false` 时共享，
+///    这里设 false 以便同一次会话里保持登录态）。
 @MainActor
 final class QQAuthSession: NSObject {
 
@@ -89,7 +89,7 @@ final class QQAuthSession: NSObject {
 
     private var session: ASWebAuthenticationSession?
 
-    /// 打开授权页，返回回调结果。
+    /// 打开授权页，返回回调 URL。
     func authenticate(url: URL) async throws -> QQCallback.Payload {
         let callback = try await run(url: url)
         guard let payload = QQCallback.parse(callback) else {
@@ -102,7 +102,7 @@ final class QQAuthSession: NSObject {
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<URL, Error>) in
             var finished = false
             func finish(_ result: Result<URL, Error>) {
-                // 防止 start() 失败和回调同时触发，造成「重复 resume」崩溃
+                // 防止 start() 失败和回调同时触发，造成"重复 resume"崩溃
                 guard !finished else { return }
                 finished = true
                 cont.resume(with: result)
@@ -129,6 +129,7 @@ final class QQAuthSession: NSObject {
             }
 
             session.presentationContextProvider = self
+            // false：复用 Safari 的 Cookie，用户 QQ 已是登录态时能一次点完
             session.prefersEphemeralWebBrowserSession = false
 
             self.session = session

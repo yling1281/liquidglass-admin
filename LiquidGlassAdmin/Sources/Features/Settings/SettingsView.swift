@@ -6,15 +6,17 @@ import SwiftUI
 ///
 /// 内容：
 /// - 账号信息（用户名、昵称、权限点）。
-/// - QQ 登录绑定（仅管理员）。
-/// - 店铺后台账号。
-/// - 服务器地址（三套），可改可重置。
+/// - 服务器地址（三套：卡密后台 / 商城前台 / 店铺后台），可改可重置。
 /// - 通知开关（本地偏好，实际推送未接入）。
 /// - 退出登录。
 struct SettingsView: View {
 
     @ObservedObject var session: SessionStore
     @ObservedObject var shopStore: ShopStore
+    @ObservedObject var shopAdmin: ShopAdminSession
+    @ObservedObject var recordStore: RecordListStore
+    @ObservedObject var channelStore: ChannelListStore
+    @ObservedObject var integrationStore: IntegrationStore
 
     @Environment(\.horizontalSizeClass) private var hSizeClass
     @State private var draft = ServerConfig.default
@@ -22,8 +24,6 @@ struct SettingsView: View {
     @State private var savedHint: String?
     @State private var expiryReminderEnabled = true
     @State private var expiryReminderDays = 7
-    @State private var shopAdminUsername = ""
-    @State private var shopAdminPassword = ""
 
     // QQ 绑定
     @State private var qqBinding: SessionStore.QQBinding?
@@ -39,6 +39,7 @@ struct SettingsView: View {
             accountSection
             qqSection
             shopAdminSection
+            moreSection
             serverSection
             notificationSection
             aboutSection
@@ -218,58 +219,61 @@ struct SettingsView: View {
 
     private var shopAdminSection: some View {
         Section {
-            if shopStore.shopAdminToken != nil {
+            if shopAdmin.isLoggedIn {
                 HStack {
-                    Label("已登录店铺后台", systemImage: "checkmark.circle.fill")
+                    Label("已登录", systemImage: "checkmark.circle.fill")
                         .foregroundStyle(.green)
                     Spacer()
-                    Button("退出") {
-                        shopStore.logoutShopAdmin()
-                    }
-                    .font(.caption)
+                    Text(shopAdmin.account ?? "—")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
+                Button("退出店铺后台", role: .destructive) {
+                    shopAdmin.logout()
+                }
+                .font(.caption)
             } else {
-                TextField("邮箱", text: $shopAdminUsername)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .keyboardType(.emailAddress)
-
-                SecureField("密码", text: $shopAdminPassword)
-
-                Button {
-                    Task {
-                        await shopStore.login(
-                            username: shopAdminUsername.trimmingCharacters(in: .whitespaces),
-                            password: shopAdminPassword
-                        )
-                        if shopStore.loginError == nil {
-                            shopAdminPassword = ""
-                        }
-                    }
+                NavigationLink {
+                    ShopAdminLoginView(shopAdmin: shopAdmin, session: session)
                 } label: {
-                    HStack(spacing: 6) {
-                        if shopStore.isLoggingIn {
-                            ProgressView().controlSize(.small)
-                        }
-                        Text(shopStore.isLoggingIn ? "登录中…" : "登录店铺后台")
-                    }
+                    Label("登录店铺后台", systemImage: "storefront")
                 }
-                .disabled(
-                    shopAdminUsername.isEmpty
-                    || shopAdminPassword.isEmpty
-                    || shopStore.isLoggingIn
-                )
-            }
-
-            if let error = shopStore.loginError {
-                Label(error, systemImage: "exclamationmark.triangle.fill")
-                    .font(.footnote)
-                    .foregroundStyle(.red)
             }
         } header: {
-            Text("店铺后台账号")
+            Text("店铺后台（异次元发卡）")
         } footer: {
-            Text("店铺后台与卡密后台是两套独立账号。文档中记录的账号已返回「该邮箱不存在」，请填入可用的后台账号。店铺管理页的商品与店铺数据走商城前台公开接口，无需登录即可查看。")
+            Text("店铺后台用邮箱登录（3113105903@qq.com），卡密后台用用户名（lingyan）。卡密后台已给该账号加了邮箱别名，所以一套密码两边都能进。")
+        }
+    }
+
+    // MARK: 更多功能
+
+    private var moreSection: some View {
+        Section("更多功能") {
+            NavigationLink {
+                RecordListView(store: recordStore)
+            } label: {
+                Label("操作记录", systemImage: "clock.arrow.circlepath")
+            }
+
+            NavigationLink {
+                ChannelListView(store: channelStore)
+            } label: {
+                Label("发卡渠道", systemImage: "arrow.triangle.branch")
+            }
+
+            NavigationLink {
+                IntegrationView(store: integrationStore, shopStore: shopStore)
+            } label: {
+                Label("对接情况", systemImage: "point.3.connected.trianglepath.dotted")
+            }
+
+            NavigationLink {
+                ShopManagementView(store: shopStore)
+            } label: {
+                Label("商城前台商品", systemImage: "bag")
+            }
         }
     }
 

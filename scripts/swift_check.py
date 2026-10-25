@@ -546,6 +546,14 @@ AsyncStream Continuation Actor MainActor TaskGroup
 LocalizedStringKey StaticString Mirror
 Environment Link LinearGradient ProposedViewSize ProposedViewSize Layout Subview LayoutSubview
 AsyncImage ImageRenderer TimelineView Canvas
+ASWebAuthenticationSession ASWebAuthenticationSessionError
+ASWebAuthenticationPresentationContextProviding ASPresentationAnchor
+ContentUnavailableView StateObject ObservedObject State Binding EnvironmentObject
+TabView NavigationStack NavigationLink NavigationSplitView LabeledContent
+CharacterSet HTTPCookie HTTPCookieStorage URLSessionConfiguration URLRequest URLSession
+GridItem LazyVGrid LazyHGrid GridItemSize ScrollView GeometryReader Menu ToolbarItem
+Section Form List DisclosureGroup Stepper Toggle SecureField TextField Picker
+NSError NSUUID NSNull
 """.split())
 
 

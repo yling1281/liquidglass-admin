@@ -1,6 +1,6 @@
 # QQ 第三方登录（管理员专用）
 
-> 实施：2026-10-25
+> 落地时间：2026-10-25
 > 涉及：卡密后台服务端（`38.76.168.61:/opt/cardkey`）、网页版登录页、iOS 客户端
 
 ---
@@ -51,9 +51,8 @@
 ## 三、服务端改动
 
 文件：`/opt/cardkey/server.py`（线上 1248 行 → 补丁后 1641 行）
-
-补丁与部署脚本在本地 `F:\mc\_deploy\`：
-`patch_qq.py`（锚点断言 + AST 语法检查）、`deploy_qq.py`（备份 → 上传 → py_compile → 重启）。
+补丁脚本：`F:\mc\_deploy\patch_qq.py`（锚点断言 + AST 语法检查）
+部署脚本：`F:\mc\_deploy\deploy_qq.py`（自动备份 → 上传 → py_compile → 重启）
 
 ### 3.1 新增两张表
 
@@ -73,7 +72,7 @@ CREATE TABLE IF NOT EXISTS qq_ticket(
 
 | 方法 | 路径 | 鉴权 | 说明 |
 |---|---|---|---|
-| GET | `/qq/authorize` | 否 | `?mode=app\|web` 或 `?t=<票据>`，302 到腾讯 |
+| GET | `/qq/authorize` | 否 | `?mode=app|web` 或 `?t=<票据>`，302 到腾讯 |
 | GET | `/qq/callback` | 否 | 换 openid、查绑定、签发 token / 回绑成功 |
 | GET | `/qq/done` | 否 | 网页版落地页：写 `Admin-Token` cookie 后跳 `/` |
 | GET | `/qq/status` | 是 | `{bound, nickname, figureurl, openidMasked, isAdmin, configured}` |
@@ -185,7 +184,7 @@ bash scripts/verify_api.sh   # 64 项，全部通过（含 11 项 QQ 断言）
 
 手工验证过的：
 
-- QQ 授权页能正常打开（返回 `QQ帐号安全登录`，说明回调地址已被腾讯接受）
+- QQ 授权页能正常打开（返回 `QQ帐号安全登录` 登录页，说明回调地址已被腾讯接受）
 - `viewer` 取票据被拒（403）
 - 网页版登录页截图确认「或 / QQ 登录」按钮已渲染
 - IPA 里能查到 `lingyankey` scheme、`QQ 授权登录` 文案、`openidMasked` 字段

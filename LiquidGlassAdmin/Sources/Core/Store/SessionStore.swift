@@ -38,7 +38,7 @@ enum LoadState<Value> {
 
 /// 登录会话。
 ///
-/// 负责：登录、登出、token 持久化、自动登录、用户信息与权限、QQ 绑定。
+/// 负责：登录、登出、token 持久化、自动登录、用户信息与权限。
 @MainActor
 final class SessionStore: ObservableObject {
 
@@ -75,6 +75,8 @@ final class SessionStore: ObservableObject {
     }
 
     /// 尝试用已保存的 token 自动登录。
+    ///
+    /// - Returns: 是否成功。
     func attemptAutoLogin() async -> Bool {
         guard !didAttemptAutoLogin else { return isAuthenticated }
         didAttemptAutoLogin = true
@@ -98,7 +100,7 @@ final class SessionStore: ObservableObject {
         }
     }
 
-    /// 账号密码登录。
+    /// 登录。
     func login(username: String, password: String) async {
         loginError = nil
         isLoggingIn = true
@@ -261,7 +263,7 @@ final class SessionStore: ObservableObject {
         }
     }
 
-    /// 解绑 QQ。成功返回 nil，失败返回错误文案。
+    /// 解绑 QQ。
     func unbindQQ() async -> String? {
         do {
             let data = try await client.sendRaw(APIRequest(endpoint: APIEndpoint.qqUnbind))
